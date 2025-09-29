@@ -2,9 +2,7 @@ package gomerkletree
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
-	"fmt"
 
 	"github.com/jeltjongsma/go-merkletree/pkg/hashing"
 )
@@ -172,17 +170,4 @@ func VerifyProof(x Leaf, p *Proof) error {
 		return errors.New("root does not match")
 	}
 	return nil
-}
-
-func (n *Node) PrintTreeDFS() {
-	b64 := base64.RawStdEncoding.EncodeToString(n.h)
-	fmt.Printf("x: %v\n", b64)
-	if n.left != nil {
-		fmt.Println("left:")
-		n.left.PrintTreeDFS()
-	}
-	if n.right != nil {
-		fmt.Println("right:")
-		n.right.PrintTreeDFS()
-	}
 }
