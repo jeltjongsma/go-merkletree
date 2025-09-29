@@ -50,6 +50,8 @@ type MerkleTree struct {
 	leaves []*Node
 }
 
+// BuildMerkleTree takes a slice of leaves, and builds a merkle tree.
+// On odd input the function relies on promotion, where the last node is carried up unchanged.
 func BuildMerkleTree(data []Leaf) *MerkleTree {
 	if len(data) == 0 {
 		return nil
@@ -92,18 +94,22 @@ func BuildMerkleTree(data []Leaf) *MerkleTree {
 	}
 }
 
+// Root returns the bytes of the root.
 func (m *MerkleTree) Root() []byte {
 	return m.root.h
 }
 
+// Len returns the total number of nodes in the tree.
 func (m *MerkleTree) Len() int {
 	return m.n
 }
 
+// Verify verifies the integrity of the tree.
 func (m *MerkleTree) Verify() bool {
 	return m.root.verify()
 }
 
+// VerifyExists verifies a leaf's existence in the tree in O(n).
 func (m *MerkleTree) VerifyExists(x Leaf) (*Node, error) {
 	inLeaves := false
 	hash := hashing.HashLeaf(x.Bytes())
@@ -125,6 +131,9 @@ func (m *MerkleTree) VerifyExists(x Leaf) (*Node, error) {
 	return node, nil
 }
 
+// Proof generates a proof for a given leaf.
+// Returns `Proof` object that contains the root, necessary siblings for the proof,
+// and whether the sibling is a left or right child.
 func (m *MerkleTree) Proof(x Leaf) (proof *Proof, err error) {
 	node, err := m.VerifyExists(x)
 	if err != nil {
@@ -152,6 +161,7 @@ func (m *MerkleTree) Proof(x Leaf) (proof *Proof, err error) {
 	}, nil
 }
 
+// VerifyProof checks if a proof is valid for a given leaf.
 func VerifyProof(x Leaf, p *Proof) error {
 	if len(p.siblings) != len(p.left) {
 		return errors.New("proof lengths mismatch")
