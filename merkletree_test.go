@@ -3,58 +3,86 @@ package gomerkletree
 import (
 	"bytes"
 	"testing"
-
-	"github.com/jeltjongsma/go-merkletree/pkg/hashing"
 )
+
+var hashStrategy = defaultHashStrategy{}
 
 func TestNode_Verify(t *testing.T) {
 	left := &Node{
-		h: hashing.HashLeaf([]byte("a")),
+		h: hashStrategy.HashLeaf([]byte("a")),
 	}
 	right := &Node{
-		h: hashing.HashLeaf([]byte("b")),
+		h: hashStrategy.HashLeaf([]byte("b")),
 	}
 	root := &Node{
-		h:     hashing.HashInternal(left.h, right.h),
+		h:     hashStrategy.HashInternal(left.h, right.h),
 		left:  left,
 		right: right,
 	}
 
-	if !root.verify() {
+	if !root.verify(hashStrategy) {
 		t.Errorf("expected true, got false")
 	}
 
 	// change left leafs hash
 	root.left = &Node{
-		h: hashing.HashLeaf([]byte("c")),
+		h: hashStrategy.HashLeaf([]byte("c")),
 	}
 
-	if root.verify() {
+	if root.verify(hashStrategy) {
 		t.Errorf("expected false, got true")
 	}
 
 	// change right leafs hash
 	root.left = left
 	root.right = &Node{
-		h: hashing.HashLeaf([]byte("d")),
+		h: hashStrategy.HashLeaf([]byte("d")),
 	}
 
-	if root.verify() {
+	if root.verify(hashStrategy) {
 		t.Errorf("expected false, got true")
 	}
 
 	// only one child
 	root.right = nil
 
-	if root.verify() {
+	if root.verify(hashStrategy) {
 		t.Errorf("expected false, got true")
 	}
 
 	// change root
 	root.right = right
-	root.h = hashing.HashInternal([]byte("a"), []byte("b")) // fails because no 0x01 prepend
+	root.h = hashStrategy.HashInternal([]byte("a"), []byte("b")) // fails because no 0x01 prepend
 
-	if root.verify() {
+	if root.verify(hashStrategy) {
+		t.Errorf("expected false, got true")
+	}
+}
+
+func TestNode_IsLeft(t *testing.T) {
+	left := &Node{
+		h: hashStrategy.HashLeaf([]byte("a")),
+	}
+	right := &Node{
+		h: hashStrategy.HashLeaf([]byte("b")),
+	}
+	root := &Node{
+		h:     hashStrategy.HashInternal(left.h, right.h),
+		left:  left,
+		right: right,
+	}
+	left.parent = root
+	right.parent = root
+
+	if !left.isLeft() {
+		t.Errorf("expected true, got false")
+	}
+
+	if right.isLeft() {
+		t.Errorf("expected false, got true")
+	}
+
+	if root.isLeft() {
 		t.Errorf("expected false, got true")
 	}
 }
@@ -96,9 +124,9 @@ func TestTree_Build_Basic(t *testing.T) {
 	}
 
 	// check node properties
-	left := hashing.HashLeaf(data[0].Bytes())
-	right := hashing.HashLeaf(data[1].Bytes())
-	root := hashing.HashInternal(left, right)
+	left := hashStrategy.HashLeaf(data[0].Bytes())
+	right := hashStrategy.HashLeaf(data[1].Bytes())
+	root := hashStrategy.HashInternal(left, right)
 
 	if !bytes.Equal(tree.Root(), root) {
 		t.Errorf("root not correct")
@@ -147,12 +175,12 @@ func TestTree_Build_Uneven(t *testing.T) {
 	}
 
 	// check node properties
-	leftLeft := hashing.HashLeaf(data[0].Bytes())
-	leftRight := hashing.HashLeaf(data[1].Bytes())
-	left := hashing.HashInternal(leftLeft, leftRight)
-	right := hashing.HashLeaf(data[2].Bytes())
+	leftLeft := hashStrategy.HashLeaf(data[0].Bytes())
+	leftRight := hashStrategy.HashLeaf(data[1].Bytes())
+	left := hashStrategy.HashInternal(leftLeft, leftRight)
+	right := hashStrategy.HashLeaf(data[2].Bytes())
 
-	root := hashing.HashInternal(left, right)
+	root := hashStrategy.HashInternal(left, right)
 
 	if !bytes.Equal(tree.Root(), root) {
 		t.Errorf("root not correct")
@@ -210,11 +238,11 @@ func TestTree_Proof(t *testing.T) {
 		t.Fatalf("expected err, got nil")
 	}
 
-	leftLeft := hashing.HashLeaf(data[0].Bytes())
-	leftRight := hashing.HashLeaf(data[1].Bytes())
-	left := hashing.HashInternal(leftLeft, leftRight)
-	right := hashing.HashLeaf(data[2].Bytes())
-	root := hashing.HashInternal(left, right)
+	leftLeft := hashStrategy.HashLeaf(data[0].Bytes())
+	leftRight := hashStrategy.HashLeaf(data[1].Bytes())
+	left := hashStrategy.HashInternal(leftLeft, leftRight)
+	right := hashStrategy.HashLeaf(data[2].Bytes())
+	root := hashStrategy.HashInternal(left, right)
 
 	// check left left proof properties
 	proof, err := tree.Proof(data[0])
@@ -307,11 +335,12 @@ func TestProof_Verify(t *testing.T) {
 		t.Errorf("expected root does not match, got %s", err.Error())
 	}
 
-	// invalid proof
+	// mismatch lengths
 	proof = &Proof{
-		root:     []byte("a"),
-		siblings: [][]byte{[]byte("a")},
-		left:     []bool{false, true},
+		root:         []byte("a"),
+		siblings:     [][]byte{[]byte("a")},
+		left:         []bool{false, true},
+		hashStrategy: defaultHashStrategy{},
 	}
 
 	err = VerifyProof(data[0], proof)
@@ -321,5 +350,21 @@ func TestProof_Verify(t *testing.T) {
 
 	if err.Error() != "proof lengths mismatch" {
 		t.Errorf("expected lengths mismatch, got %s", err.Error())
+	}
+
+	// missing hashing strategy
+	proof = &Proof{
+		root:     []byte("a"),
+		siblings: [][]byte{[]byte("a")},
+		left:     []bool{true},
+	}
+
+	err = VerifyProof(data[0], proof)
+	if err == nil {
+		t.Fatalf("expected err, got nil")
+	}
+
+	if err.Error() != "no proof/hash strategy" {
+		t.Errorf("expected missing proof/strategy, got %s", err.Error())
 	}
 }
